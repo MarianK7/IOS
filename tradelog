@@ -1,0 +1,256 @@
+#!/bin/bash
+
+export POSIXLY_CORRECT=yes
+export LC_NUMERIC=en_US.UTF-8
+
+print_help(){
+  echo "NAME:"
+  echo "   tradelog - stock trading logs analyzer"
+  echo " "
+  echo "Usage: ./tradelog [-h|--help]"
+  echo "       ./tradelog [FILTER...] [COMMAND] [LOG...]"
+  echo " "
+  echo "COMMANDS:"
+  echo "   list-tick"
+  echo "      prints list of the stock exchange symbols(tickers)"
+  echo "   profit"
+  echo "      prints total profit from closed positions"
+  echo "   last-price"
+  echo "      prints last known price of every ticker"
+  echo "   hist-ord"
+  echo "      prints transaction number historogram by tickers"
+  echo "   graph-pos"
+  echo "      prints graph of held position values by tickers"
+  echo " "
+  echo "FILTERS:"
+  echo "   -a DATETIME"
+  echo "      filters records after this data"
+  echo "   -b DATETIME"
+  echo "      filters records before this data"
+  echo "   -t TICKER"
+  echo "      filters records corresponding to the specified ticker or tickers if used multiple times"
+  echo "   -w WIDTH"
+  echo "      sets width of the longest line to the specified width, must be positive integer"
+  echo "      only one usage allowed per each script run!!"
+  echo " "
+  echo "AUTHOR:"
+  echo "   Written by Marian Keszi(xkeszi00)"
+  echo " "
+}
+
+command=""
+width=1
+widthGraph=1000
+afterTime=""
+beforeTime="9999"
+ticker=""
+readInput=""
+empty=""
+check=0
+controler=0
+error=0
+in=0
+
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+  list-tick | pos | profit | last-price | hist-ord | graph-pos)
+    command="$1"
+    controler=1
+    shift
+  ;;
+-h | --help)
+  print_help | less
+  exit 0
+  ;;
+-w)
+  width="$2"
+  widthGraph="$2"
+  controler=1
+  error=$((error+1))
+  shift
+  shift
+  ;;
+-a)
+  afterTime="$2"
+  controler=1
+  shift
+  shift
+  ;;
+-b)
+  beforeTime="$2"
+  controler=1
+  shift
+  shift
+  ;;
+-t)
+  ticker=" ""$2$ticker"
+  check=1
+  controler=1 
+  shift
+  shift
+  ;;
+*.gz)
+  readInput="gzip -d -c $readInput $1"
+  in=1
+  shift
+  ;;
+*.log)
+  readInput="$readInput cat $1"
+  in=1
+  shift
+  ;;
+ esac
+done
+
+
+if [ $in -eq 0 ]
+then 
+readInput="cat"
+tempOut=$(eval "$readInput")
+else
+tempOut=$(eval "$readInput")
+fi
+
+
+if [ $error -gt 1 ]
+then
+  echo "Maximum count of -w filter is 1 !!!"
+  exit 0
+elif [ $width -lt 0 ]
+then
+  echo "-w filter must be a positive interger !!!"
+  exit 0
+fi
+
+if [ "$controler" -eq 1 ]
+then 
+
+  readFiltered=$(echo "$tempOut" | \
+    awk \
+    -F ';' \
+    -v after="$afterTime" \
+    -v before="$beforeTime" \
+    '{
+      if ($1 > after && $1 < before){
+          print $0
+      }
+  }')
+
+  if [ "$check" -eq 1 ]
+  then
+  out=$(echo "$readFiltered" | \
+  awk \
+  -F ";" \
+  -v tit="$ticker" \
+  '{n=split(tit, a, " "); for(i=0; ++i <= n;)if(a[i] == $2) print $0}')
+  else
+    out=$(echo "$readFiltered")
+  fi  
+  
+  cc=1
+  case "$command" in
+    list-tick)
+      LT=$(echo "$out" | awk -F ';' '{print $2}')
+    echo "$LT" | sort -u
+    exit 0
+    ;;
+
+    profit)
+      profit=$(echo "$out" | awk -F ';' '{if ($3 == "sell") {prof += $4 * $6} else if ($3 == "buy") {prof -= $4 * $6}} END {printf("%.2f", prof)}')
+    echo "$profit"
+    exit 0
+    ;;
+
+    last-price)
+      maxW=$(echo "$out" | awk -F ';' '{w=length($4); a=a + 0; {if(w > a) {a=w}}} END {printf("%d\n", a)}')
+      
+      LP=$(echo "$out" | tac | awk -F ';' -v m=$maxW '!a[$2]++ {printf("%-9s : %*.2f\n", $2, m, $4)}' | tac) 
+    echo "$LP" | sort
+    exit 0
+    ;;
+
+    pos)
+      LP=$(echo "$out" | tac | awk -F ';' '{if(NR == 1) {!a[$2]++; printf("%s;%.2f;%s;%s\n", $2, $4, $3, $6)} else {a[$2]++; printf("%s;%.2f;%s;%s\n", $2, $4, $3, $6)}}' | sort) 
+                  
+      LT=$(echo "$out" | awk -F ';' '{printf("%s;%.2f;%s;%s\n", $2, $4, $3, $6)}' | sort -r | sort -r)
+      
+      pos=$(echo "$LP" | \
+      awk -F ';' \
+      '{
+        if(NR == 1){
+          tic=$1
+          lp=$2} 
+          if(tic != $1){                    
+            printf("%s;%d;%.2f\n", tic, sum, lp)                  
+              tic=$1              
+              sum=0                                                      
+              } 
+            if(tic == $1){ 
+              if($3 == "buy"){
+                sum += $4
+                lp=$2} else{
+                  sum -= $4
+                  lp=$2} } 
+                  }')
+      
+      posW=$(echo "$pos" | \
+      awk -F ';' \
+      '{printf("%s;%.2f\n", $1, $2 * $3)}')  
+
+      maxW=$(echo "$posW" | awk -F ';' '{w=length($2); {if(w > a) {a=w}}} END {printf("%d\n", a)}')    
+      
+
+      posPrint=$(echo "$pos" | \
+      awk -F ';' \
+      -v w=$maxW \
+      '{printf("%-9s : %*.2f\n", $1, w, $2*$3)}' | sort -k 3 -g)
+      echo "$posPrint" | tac
+
+    exit 0
+    ;;
+
+    graph-pos)
+      LP=$(echo "$out" | tac | awk -F ';' '{if(NR == 1) {!a[$2]++; printf("%s;%.2f;%s;%s\n", $2, $4, $3, $6)} else {a[$2]++; printf("%s;%.2f;%s;%s\n", $2, $4, $3, $6)}}' | sort)
+      pos=$(echo "$LP" | \
+        awk -F ';' \
+        '{
+          if(NR == 1){
+            tic=$1
+            lp=$2} 
+            if(tic != $1){                    
+              printf("%s;%d;%.2f\n", tic, sum, lp)                  
+                tic=$1              
+                sum=0                                                      
+                } 
+              if(tic == $1){ 
+                if($3 == "buy"){
+                  sum += $4
+                  lp=$2} else{
+                    sum -= $4
+                    lp=$2} } 
+          }')
+      posOut=$(echo "$pos" | \
+        awk -F ';' \
+        '{printf("%s;%.2f\n", $1, $2 * $3)}')
+        
+      print=$(echo "$posOut" | awk -F ";" -v w=$widthGraph '{ s=$2 / 1000 / w; printf("%-9s : ", $1); while(int(s) != 0) { if(s > 0){printf("%s", "#"); --s } if(s < 0){printf("%s", "!"); ++s } } printf("\n")}')
+      echo "$print"
+    exit 0
+    ;;
+
+    hist-ord)
+      hist=$(echo "$out" | awk -F ';' '{print $2}' | sort | uniq -c)
+      print=$(echo "$hist" | awk -F " " -v w=$width '{ s=$1 / w; printf("%-9s : ", $2); while(int(s) > 0) { printf("%s", "#"); --s } printf("\n")}')
+      echo "$print"
+    exit 0
+    ;;
+  esac
+
+else
+
+echo "$tempOut"
+
+fi
+
+echo "$out"
