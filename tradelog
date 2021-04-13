@@ -116,11 +116,11 @@ fi
 if [ $error -gt 1 ]
 then
   echo "Maximum count of -w filter is 1 !!!"
-  exit 0
-elif [ $width -lt 0 ]
+  exit 1
+elif [ "$width" -lt 0 ]
 then
   echo "-w filter must be a positive interger !!!"
-  exit 0
+  exit 1
 fi
 
 if [ "$controler" -eq 1 ]
@@ -148,7 +148,6 @@ then
     out=$(echo "$readFiltered")
   fi  
   
-  cc=1
   case "$command" in
     list-tick)
       LT=$(echo "$out" | awk -F ';' '{print $2}')
@@ -165,23 +164,24 @@ then
     last-price)
       maxW=$(echo "$out" | awk -F ';' '{w=length($4); a=a + 0; {if(w > a) {a=w}}} END {printf("%d\n", a)}')
       
-      LP=$(echo "$out" | tac | awk -F ';' -v m=$maxW '!a[$2]++ {printf("%-9s : %*.2f\n", $2, m, $4)}' | tac) 
+      LP=$(echo "$out" | tac | awk -F ';' -v m="$maxW" '!a[$2]++ {printf("%-9s : %*.2f\n", $2, m, $4)}' | tac) 
     echo "$LP" | sort
     exit 0
     ;;
 
     pos)
+    # Zoradim si vstupne data podla tickerov a podla last price.
       LP=$(echo "$out" | tac | awk -F ';' '{if(NR == 1) {!a[$2]++; printf("%s;%.2f;%s;%s\n", $2, $4, $3, $6)} else {a[$2]++; printf("%s;%.2f;%s;%s\n", $2, $4, $3, $6)}}' | sort) 
-                  
-      LT=$(echo "$out" | awk -F ';' '{printf("%s;%.2f;%s;%s\n", $2, $4, $3, $6)}' | sort -r | sort -r)
-      
+    # Na prvom riadku si nastavim tic na hodnotu prveho stlpca(nazov prveho tickra). Nasledne v podmienke pozeram ci sa mi zhoduje premnna tic s prvym stlpcom, ak nie vytlacim ticker, hodnotu sum a poslednu cenu, plus nastavim premennu tic na novy ticker ak nejaky je a vynulujem premennu sum
+    # sum pocitam v podmienkach ak sa mi premenna tic rovna s tickrom v prvom stlpci, tak, ze ak sa stlpec 3 rovna buy pripocitavam k premennej sum honotu 4. stlpca inac hodnotu odcitam a zaroven si do premennej lp priradujem cenu pri kazdom zazname, cize pri poslednej operacii sum dostavam poslednu cenu
+    # uplne na koniec este vytlacim posledny riadok, ktory by inac nebol vytlaceny 
       pos=$(echo "$LP" | \
       awk -F ';' \
       '{
         if(NR == 1){
           tic=$1
-          lp=$2} 
-          if(tic != $1){                    
+          } 
+          if($1 != tic){                    
             printf("%s;%d;%.2f\n", tic, sum, lp)                  
               tic=$1              
               sum=0                                                      
@@ -192,18 +192,18 @@ then
                 lp=$2} else{
                   sum -= $4
                   lp=$2} } 
-                  }')
-      
+                  } END {printf("%s;%d;%.2f\n", tic, sum, lp)}')
+    # posW sluzi na vypocet mnozstva drzanych jednotiek * posledna cena 
       posW=$(echo "$pos" | \
       awk -F ';' \
       '{printf("%s;%.2f\n", $1, $2 * $3)}')  
-
+    # maxW slizi na vypocet najdlhsieho cisla, tuto hodnotu potom poizivam pri dynamickom zarovnavani na konci
       maxW=$(echo "$posW" | awk -F ';' '{w=length($2); {if(w > a) {a=w}}} END {printf("%d\n", a)}')    
       
-
+    # posPrint vykonava uz len vytlacenie vysledku v pozadovanom formate
       posPrint=$(echo "$pos" | \
       awk -F ';' \
-      -v w=$maxW \
+      -v w="$maxW" \
       '{printf("%-9s : %*.2f\n", $1, w, $2*$3)}' | sort -k 3 -g)
       echo "$posPrint" | tac
 
@@ -212,12 +212,13 @@ then
 
     graph-pos)
       LP=$(echo "$out" | tac | awk -F ';' '{if(NR == 1) {!a[$2]++; printf("%s;%.2f;%s;%s\n", $2, $4, $3, $6)} else {a[$2]++; printf("%s;%.2f;%s;%s\n", $2, $4, $3, $6)}}' | sort)
+      
       pos=$(echo "$LP" | \
         awk -F ';' \
         '{
           if(NR == 1){
             tic=$1
-            lp=$2} 
+            } 
             if(tic != $1){                    
               printf("%s;%d;%.2f\n", tic, sum, lp)                  
                 tic=$1              
@@ -229,20 +230,22 @@ then
                   lp=$2} else{
                     sum -= $4
                     lp=$2} } 
-          }')
+          } END {printf("%s;%d;%.2f\n", tic, sum, lp)}')
+      
       posOut=$(echo "$pos" | \
         awk -F ';' \
         '{printf("%s;%.2f\n", $1, $2 * $3)}')
         
-      print=$(echo "$posOut" | awk -F ";" -v w=$widthGraph '{ s=$2 / 1000 / w; printf("%-9s : ", $1); while(int(s) != 0) { if(s > 0){printf("%s", "#"); --s } if(s < 0){printf("%s", "!"); ++s } } printf("\n")}')
+      print=$(echo "$posOut" | awk -F ";" -v w="$widthGraph" '{ s=$2 / 1000 / w; printf("%-9s : ", $1); while(int(s) != 0) { if(s > 0){printf("%s", "#"); --s } if(s < 0){printf("%s", "!"); ++s } } printf("\n")}')
       echo "$print"
     exit 0
     ;;
 
     hist-ord)
       hist=$(echo "$out" | awk -F ';' '{print $2}' | sort | uniq -c)
-      print=$(echo "$hist" | awk -F " " -v w=$width '{ s=$1 / w; printf("%-9s : ", $2); while(int(s) > 0) { printf("%s", "#"); --s } printf("\n")}')
+      print=$(echo "$hist" | awk -F " " -v w="$width" '{ s=$1 / w; printf("%-9s : ", $2); while(int(s) > 0) { printf("%s", "#"); --s } printf("\n")}')
       echo "$print"
+    
     exit 0
     ;;
   esac
@@ -253,4 +256,4 @@ echo "$tempOut"
 
 fi
 
-echo "$out"
+echo "$out" | awk 'NF'
