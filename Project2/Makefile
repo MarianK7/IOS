@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS= -std=gnu99 -Wall -Wextra -Werror -pedantic -lpthread
+CFLAGS= -std=gnu99 -Wall -Wextra -Werror -pedantic -pthread
 BIN=proj2
 SOURCE=proj2.c
 
