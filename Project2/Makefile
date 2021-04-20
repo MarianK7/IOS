@@ -7,7 +7,7 @@ all:
 	$(CC) $(CFLAGS) $(SOURCE) -o $(BIN)
 
 clean:
-	rm *.o
+	rm *.out
 	rm $(BIN)
 
 zip:
