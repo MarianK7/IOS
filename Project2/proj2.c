@@ -169,10 +169,10 @@ void destSemaphores()
         destSemaphore(fileWrite, "fileWrite");
 }
 
-void santaWrite(char *write, int action, int wait, int numb)
+void santaWrite(char *write, int action, int wait, int val)
 {
     sem_wait(fileWrite);
-    if (numb == 1)
+    if (val == 1)
         fprintf(*file, write, action);
     else
         fprintf(*file, write, action, wait);
@@ -189,10 +189,10 @@ void santa()
     fclose(*file);
 }
 
-void elfWrite(char *write, int action, int id, int wait, int numb)
+void elfWrite(char *write, int action, int id, int wait, int val)
 {
     sem_wait(fileWrite);
-    if (numb == 2)
+    if (val == 2)
         fprintf(*file, write, action, id);
     else
     {
@@ -211,10 +211,10 @@ void elf(int id)
     fclose(*file);
 }
 
-void reindeerWrite(char *write, int action, int id, int wait, int numb)
+void reindeerWrite(char *write, int action, int id, int wait, int val)
 {
     sem_wait(fileWrite);
-    if (numb == 2)
+    if (val == 2)
         fprintf(*file, write, action, id);
     else
     {
