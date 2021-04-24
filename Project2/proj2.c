@@ -149,12 +149,14 @@ void destMemory()
     }
 }
 
+/*Function for closing and unlinking semaphores*/
 void destSemaphore(sem_t *sem, char *name)
 {
     sem_close(sem);
     sem_unlink(name);
 }
 
+/*Function for destroying initialized semaphores*/
 void destSemaphores()
 {
     if (mutex != NULL)
@@ -169,6 +171,7 @@ void destSemaphores()
         destSemaphore(fileWrite, "fileWrite");
 }
 
+/*Function for output printing for the santa function*/
 void santaWrite(char *write, int action, int wait, int val)
 {
     sem_wait(fileWrite);
@@ -189,6 +192,7 @@ void santa()
     fclose(*file);
 }
 
+/*Function for output printing for the elves function*/
 void elfWrite(char *write, int action, int id, int wait, int val)
 {
     sem_wait(fileWrite);
@@ -211,6 +215,7 @@ void elf(int id)
     fclose(*file);
 }
 
+/*Function for output printing for the reindeers function*/
 void reindeerWrite(char *write, int action, int id, int wait, int val)
 {
     sem_wait(fileWrite);
@@ -272,6 +277,7 @@ int main(int argc, char **argv)
     }
     setbuf(*file, NULL); // Sets the file buffer to NULL
 
+    /*Creating semaphore and  checking for errors, if error occures prints error message to the stderr, destroys semaphores, destroys initialized memory  and closes the file for outpu writing*/
     if ((mutex = sem_open("mutex_sem", O_CREAT | O_EXCL, 0666, 1)) == SEM_FAILED || (santaSem = sem_open("santa_sem", O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED || (elfTex = sem_open("elfTex", O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED || (reindeerSem = sem_open("reindeer_sem", O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED || (fileWrite = sem_open("fileWrite", O_CREAT | O_EXCL, 0666, 1)) == SEM_FAILED)
     {
         fprintf(stderr, "Error while creating semaphores\n");
