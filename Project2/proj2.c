@@ -192,6 +192,17 @@ void santa()
     fclose(*file);
 }
 
+/*Function for generating santa process*/
+void genSanta()
+{
+pid_t santa_process = fork();    // Forking the santa process
+    if (santa_process == 0)    // Child = one santa
+    {
+        santa();
+    }
+exit(0);    
+}
+
 /*Function for output printing for the elves function*/
 void elfWrite(char *write, int action, int id, int wait, int val)
 {
@@ -208,18 +219,36 @@ void elfWrite(char *write, int action, int id, int wait, int val)
 
 void elf(int id)
 {
+    sem_wait(mutex);
     elfWrite("%d: ELF %d: started\n", *row, id, 0, 2);
+    sem_post(mutex);
 
     destSemaphores();
     destMemory();
     fclose(*file);
 }
 
-/*Function for output printing for the reindeers function*/
+/*Function for generating elf processes*/
+void genElves(int NE, int TE)
+{
+for (int i = 1; i < NE + 1; i++)
+        {
+            int rndE = rand() % TE * 1000; // Random time number between each processes
+            usleep(rndE);              // Waiting until new process is created
+            pid_t elves_process = fork();    // Forking the elves process
+            if (elves_process == 0)    // Child = one elf
+            {
+                elf(i);
+            }
+        }
+        exit(0);
+}
+
+/*Function for output printing for the reindeer function*/
 void reindeerWrite(char *write, int action, int id, int wait, int val)
 {
     sem_wait(fileWrite);
-    if (val == 2)
+    if (val == 3)
         fprintf(*file, write, action, id);
     else
     {
@@ -232,11 +261,29 @@ void reindeerWrite(char *write, int action, int id, int wait, int val)
 
 void reinDeer(int id)
 {
-     reindeerWrite("%d: RD %d: rstarted\n", *row, id, 0, 2);
+    sem_wait(mutex);
+    reindeerWrite("%d: RD  %d: rstarted\n", *row, id, 0, 3);
+    sem_post(mutex);
 
     destSemaphores();
     destMemory();
     fclose(*file);
+}
+
+/*Function for generating reindeer processes*/
+void genReinD(int NR, int TR)
+{
+for (int i = 1; i < NR + 1; i++)
+        {
+            int rndRD = rand() % TR * 1000; // Random time number between each processes
+            usleep(rndRD);              // Waiting until new process is created
+            pid_t reindeer_process = fork(); // Forking the reindeer process
+            if (reindeer_process == 0) // Child = one reindeer
+            {
+                reinDeer(i);
+            }
+        }
+        exit(0);
 }
 
 int main(int argc, char **argv)
@@ -291,76 +338,34 @@ int main(int argc, char **argv)
 
     if (main_process == 0)
     {
-        santa();
+        // Child
+        pid_t santa_generator = fork();
+        if (santa_generator == 0)
+        {
+            santa();
+        }
+        
+        pid_t elf_generator = fork();
+        if (elf_generator == 0)
+        {
+            genElves(NE, TE);
+        }
+
+        pid_t reindeer_generator = fork();
+        if (reindeer_generator == 0)
+        {
+            genReinD(NR, TR);
+        }
         exit(0);
     }
     else if (main_process > 0)
     {
-        //parent
-    }
-    else // Error check
-    {
-        fprintf(stderr, "Error while creating process\n");
+        // Parent
         destSemaphores();
         destMemory();
         fclose(*file);
-        return 1;
-    }
-
-    pid_t elf_generator = fork();
-
-    if (elf_generator == 0)
-    {
-        int rndt;            // Random time init
-        pid_t elves_process; // Elf process
-        // For cycle used for generating the elves processes
-        for (int i = 1; i < NE + 1; i++)
-        {
-            rndt = rand() % TE * 1000; // Random time number between each processes
-            usleep(rndt);              // Waiting until new process is created
-            elves_process = fork();    // Forking the elves process
-            if (elves_process == 0)    // Child = one elf
-            {
-                elf(i);
-            }
-        }
         exit(0);
-    }
-    else if (elf_generator > 0)
-    {
-        //parent
-    }
-    else // Error check
-    {
-        fprintf(stderr, "Error while creating process\n");
-        destSemaphores();
-        destMemory();
-        fclose(*file);
-        return 1;
-    }
-
-    pid_t reindeer_generator = fork();
-
-    if (reindeer_generator == 0)
-    {
-        int rndt;               // Random time init
-        pid_t reindeer_process; // Elf process
-        // For cycle used for generating the elves processes
-        for (int i = 1; i < NR + 1; i++)
-        {
-            rndt = rand() % TR * 1000; // Random time number between each processes
-            usleep(rndt);              // Waiting until new process is created
-            reindeer_process = fork(); // Forking the reindeer process
-            if (reindeer_process == 0) // Child = one reindeer
-            {
-                reinDeer(i);
-            }
-        }
-        exit(0);
-    }
-    else if (reindeer_generator > 0)
-    {
-        //parent
+        
     }
     else // Error check
     {
