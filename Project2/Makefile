@@ -7,8 +7,7 @@ all:
 	$(CC) $(CFLAGS) $(SOURCE) -o $(BIN)
 
 clean:
-	rm *.out
-	rm $(BIN)
+	rm $(BIN) *.out	
 
 zip:
 	zip proj2.zip $(SOURCE) Makefile
