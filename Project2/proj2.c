@@ -288,6 +288,12 @@ for (int i = 1; i < NR + 1; i++)
 
 int main(int argc, char **argv)
 {
+    /*Control check if all arguments were passed correctly, if not, returns 1 and the programm ends with the specific error*/
+    if (argCheck(argc, argv) == 1)
+    {
+        return 1;
+    }
+
     setbuf(stdout, NULL); // Sets the stdout buffer to NULL
     /*Parsing each one of the arguments to the specific variables*/
     char *ptr;
@@ -296,13 +302,7 @@ int main(int argc, char **argv)
     TE = strtol(argv[3], &ptr, 10);
     TR = strtol(argv[4], &ptr, 10);
 
-    printf("%d %d %d %d\n", NE, NR, TE, TR); // TO BE REMOVED!!! (control output for arguments)
-
-    /*Control check if all arguments were passed correctly, if not, returns 1 and the programm ends with the specific error*/
-    if (argCheck(argc, argv) == 1)
-    {
-        return 1;
-    }
+    printf("%d %d %d %d\n", NE, NR, TE, TR); // TO BE REMOVED!!! (control output for arguments)    
 
     int memCheck = initMemory(); // Initializing the shared memory
     /*Control check if the shared memory initialization was successfull, if not, 
