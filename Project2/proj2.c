@@ -1,14 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <stdbool.h>
-#include <ctype.h>
 #include <unistd.h>
 #include <semaphore.h>
-#include <sys/types.h>
-#include <sys/ipc.h>
 #include <sys/shm.h>
-#include <sys/wait.h>
 #include <fcntl.h>
 
 int NE; // The number of elves to be generated
@@ -279,7 +273,9 @@ void writeOut(char *write, int actionN, int id, int val)
 
 
 /*Santa function at the start prints that sansta is going to sleep. Next there is endless cycle for santa helping elves.
-When all reindeers have returned home, the christmasCheck is set to 1 and the cycle ends and santa prints closing workshop.*/
+When all reindeers have returned home, the christmasCheck is set to 1 and the cycle ends and santa prints closing workshop.
+Now waits while all reindeers will be hitched and after that, prints Christmas started.
+After Christmas started finishCheck is set to 1  and elves can no more be helped by Santa.*/
 void santa()
 {
     while(1) {
@@ -311,6 +307,12 @@ void santa()
     sem_post(santaHelping);
 }
 
+/*Elf function at the start prints which elf has started. Next there is an endless cycle in which elves are requesting help from Santa after a random time.
+If there are 3 elves with request of help from Santa, Santa is signalized by santaSem and starts to help elves.
+If shared variable elfCount is equal to 0 santaHelped semaphore signalizes Santa and he can go sleep again.
+Next ElfTex is sigalized 3 times so at the end the value will be equal to the initialized value of semaphore.
+If the finishCheck is set to 1 from Santa function, elves are no more able to be getting helped from Santa and cycle is ended.
+After cycle ends elves will be taking holidays*/
 void elf(int id, int TE)
 {
     sem_wait(fileWrite);
@@ -359,6 +361,10 @@ void elf(int id, int TE)
     sem_post(santaHelping);
 }
 
+/*Reindeer function at the start prints which reindeer has rstarted. Then after a random time reindeers are being returned home.
+When all reindeers are back home (controled by shared variable reindeerCount) variable christmasCheck is set to 1 and santaSem signalizes santa to close the workshop.
+After santa closes the workshop reindeers are getting hitched (again controled by shared variable reindeerCount).
+When all reindeers are hitched, finishSem is signalized and Santa starts the Christmas.*/
 void reinDeer(int id, int TR, int NR)
 {
     sem_wait(fileWrite);
