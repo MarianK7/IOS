@@ -19,6 +19,7 @@ int TR; // The maximum time in milliseconds that a reindeer returns home from th
 /*Declaration of required semaphores*/
 sem_t *santaSem = NULL;    // Santa waits on santaSem until either an elf or a reindeer signals him
 sem_t *reindeerSem = NULL; // The reindeers waits on reindeerSem until Santa signals them to enter thepaddock and get hitched
+sem_t *reindeerHome = NULL; // Semaphore signals santa that all reindeers are back home 
 sem_t *elfTex = NULL;      // Used to prevent additional elves from entering while three elves are being helped
 sem_t *mutex = NULL;       // Protects the elves and raindeers
 sem_t *fileWrite = NULL;   // Protection for writing into file
@@ -26,8 +27,11 @@ sem_t *fileWrite = NULL;   // Protection for writing into file
 FILE **file = NULL; // Variable for the proj2.out
 int fileID = 0;     // ID variable for the shared memory usage
 
-int rowID = 0;
-int *row = NULL;
+int rowID = 0; // ID variable for the shared memory usage
+int *row = NULL;    // Shared variable for numbers of actual actions
+
+int elfCid = 0; // ID variable for the shared memory usage
+int *elfCount = NULL; // Shared variable which holds the actual number of waiting elves
 
 /*Function for argument corectness check*/
 int argCheck(int argc, char **argv)
@@ -132,6 +136,18 @@ int initMemory()
         return 1;
     }
 
+    if ((elfCid = shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666)) == -1)
+    {
+        fprintf(stderr, "Shared memory segment could not be created\n");
+        return 1;
+    }
+
+    if ((elfCount = shmat(elfCid, NULL, 0)) == NULL)
+    {
+        fprintf(stderr, "Error occured while attaching the shared memory segment\n");
+        return 1;
+    }
+
     return 0; // If the process of shared memory initialization was successfull function returns 0
 }
 
@@ -147,6 +163,12 @@ void destMemory()
     {
         shmctl(rowID, IPC_RMID, NULL);
     }
+
+    if (elfCount != NULL)
+    {
+        shmctl(elfCid, IPC_RMID, NULL);
+    }
+
 }
 
 /*Function for closing and unlinking semaphores*/
@@ -167,29 +189,33 @@ void destSemaphores()
         destSemaphore(elfTex, "elfTex");
     if (reindeerSem != NULL)
         destSemaphore(reindeerSem, "reindeer_sem");
+    if (reindeerHome != NULL)
+        destSemaphore(reindeerSem, "rdhome_sem");
     if (fileWrite != NULL)
         destSemaphore(fileWrite, "fileWrite");
 }
 
 /*Function for output printing for the santa function*/
-void santaWrite(char *write, int action, int wait, int val)
+void santaWrite(char *write, int actionN)
 {
     sem_wait(fileWrite);
-    if (val == 1)
-        fprintf(*file, write, action);
-    else
-        fprintf(*file, write, action, wait);
-    (*row)++; // Increment action number
+        fprintf(*file, write, actionN);
+        (*row)++; // Increment action number
     sem_post(fileWrite);
 }
 
 void santa()
 {
-    santaWrite("%d: Santa: going to sleep\n", *row, 0, 1);
+    sem_wait(mutex);
+    santaWrite("%d: Santa: going to sleep\n", *row);
+    sem_post(mutex);
+}
 
-    destSemaphores();
-    destMemory();
-    fclose(*file);
+void santaHelp()
+{
+    sem_wait(mutex);
+    santaWrite("%d: Santa: helping elves\n", *row);
+    sem_post(mutex);
 }
 
 /*Function for generating santa process*/
@@ -204,28 +230,39 @@ exit(0);
 }
 
 /*Function for output printing for the elves function*/
-void elfWrite(char *write, int action, int id, int wait, int val)
+void elfWrite(char *write, int actionN, int id)
 {
     sem_wait(fileWrite);
-    if (val == 2)
-        fprintf(*file, write, action, id);
-    else
-    {
-        fprintf(*file, write, action, id, wait);
-    }
+
+    fprintf(*file, write, actionN, id);
+
     (*row)++; // Increment action number
+    
     sem_post(fileWrite);
 }
 
 void elf(int id)
 {
     sem_wait(mutex);
-    elfWrite("%d: ELF %d: started\n", *row, id, 0, 2);
+    elfWrite("%d: ELF %d: started\n", *row, id);
+    (*elfCount)++;
     sem_post(mutex);
 
-    destSemaphores();
-    destMemory();
-    fclose(*file);
+    int rndE = rand() % id * 1000;
+    usleep(rndE); 
+    sem_wait(mutex);
+    elfWrite("%d: ELF %d: need help\n", *row, id);
+    sem_post(mutex);
+
+    if (*elfCount == 3)
+    {
+        *elfCount = 0;
+        santaHelp();
+        usleep(rndE);
+        santa();
+    }
+    
+
 }
 
 /*Function for generating elf processes*/
@@ -235,24 +272,20 @@ for (int i = 1; i < NE + 1; i++)
         {
             int rndE = rand() % TE * 1000; // Random time number between each processes
             usleep(rndE);              // Waiting until new process is created
-            pid_t elves_process = fork();    // Forking the elves process
-            if (elves_process == 0)    // Child = one elf
-            {
-                elf(i);
-            }
+            elf(i);
         }
         exit(0);
 }
 
 /*Function for output printing for the reindeer function*/
-void reindeerWrite(char *write, int action, int id, int wait, int val)
+void reindeerWrite(char *write, int actionN, int id, int home, int val)
 {
     sem_wait(fileWrite);
     if (val == 3)
-        fprintf(*file, write, action, id);
+        fprintf(*file, write, actionN, id);
     else
     {
-        fprintf(*file, write, action, id, wait);
+        fprintf(*file, write, actionN, id, home);
     }
     (*row)++; // Increment action number
     sem_post(fileWrite);
@@ -265,9 +298,6 @@ void reinDeer(int id)
     reindeerWrite("%d: RD  %d: rstarted\n", *row, id, 0, 3);
     sem_post(mutex);
 
-    destSemaphores();
-    destMemory();
-    fclose(*file);
 }
 
 /*Function for generating reindeer processes*/
@@ -277,11 +307,7 @@ for (int i = 1; i < NR + 1; i++)
         {
             int rndRD = rand() % TR * 1000; // Random time number between each processes
             usleep(rndRD);              // Waiting until new process is created
-            pid_t reindeer_process = fork(); // Forking the reindeer process
-            if (reindeer_process == 0) // Child = one reindeer
-            {
-                reinDeer(i);
-            }
+            reinDeer(i);
         }
         exit(0);
 }
@@ -313,6 +339,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    *elfCount = 0;
     *row = 1;
 
     *file = fopen("proj2.out", "w"); // Opening the output file for writing
@@ -325,7 +352,12 @@ int main(int argc, char **argv)
     setbuf(*file, NULL); // Sets the file buffer to NULL
 
     /*Creating semaphore and  checking for errors, if error occures prints error message to the stderr, destroys semaphores, destroys initialized memory  and closes the file for outpu writing*/
-    if ((mutex = sem_open("mutex_sem", O_CREAT | O_EXCL, 0666, 1)) == SEM_FAILED || (santaSem = sem_open("santa_sem", O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED || (elfTex = sem_open("elfTex", O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED || (reindeerSem = sem_open("reindeer_sem", O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED || (fileWrite = sem_open("fileWrite", O_CREAT | O_EXCL, 0666, 1)) == SEM_FAILED)
+    if ((mutex = sem_open("mutex_sem", O_CREAT | O_EXCL, 0666, 1)) == SEM_FAILED 
+        || (santaSem = sem_open("santa_sem", O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED 
+        || (elfTex = sem_open("elfTex", O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED 
+        || (reindeerSem = sem_open("reindeer_sem", O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED 
+        || (reindeerHome = sem_open("rdhome_sem", O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED
+        || (fileWrite = sem_open("fileWrite", O_CREAT | O_EXCL, 0666, 1)) == SEM_FAILED)
     {
         fprintf(stderr, "Error while creating semaphores\n");
         destSemaphores();
@@ -342,20 +374,32 @@ int main(int argc, char **argv)
         pid_t santa_generator = fork();
         if (santa_generator == 0)
         {
-            santa();
+            genSanta();
+        } else if (santa_generator > 0)
+        {
+            //parent
         }
         
         pid_t elf_generator = fork();
         if (elf_generator == 0)
         {
             genElves(NE, TE);
+            
+        }else if (elf_generator > 0)
+        {
+            //parent
         }
 
         pid_t reindeer_generator = fork();
         if (reindeer_generator == 0)
         {
             genReinD(NR, TR);
+
+        }else if (reindeer_generator > 0)
+        {
+            //parent
         }
+
         exit(0);
     }
     else if (main_process > 0)
@@ -375,6 +419,10 @@ int main(int argc, char **argv)
         fclose(*file);
         return 1;
     }
+
+    destSemaphores();
+    destMemory();
+    fclose(*file);
 
     return 0; // Correctly ending the programm with no errors ocured
 }
